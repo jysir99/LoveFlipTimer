@@ -4,7 +4,6 @@
     box-sizing: border-box;
 }
 
-
 body,
 html {
     margin: 0;
@@ -14,29 +13,27 @@ html {
 }
 
 body {
-    font-family: 'Poppins', sans-serif;
+    font-family: 'Poppins', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: #0c0618;
 }
 
-/* 全屏 Loading 遮罩 */
+/* ========== 全屏 Loading 遮罩 ========== */
 #loading-screen {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background: white;
-    /* 纯白背景 */
+    background: radial-gradient(circle at 50% 42%, #ffffff 0%, #ffffff 52%, #ffeff5 100%);
     display: flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
-    font-size: 2rem;
-    font-weight: bold;
-    color: black;
+    gap: 18px;
     z-index: 9999;
     transition: opacity 1s ease-out, visibility 1s ease-out;
 }
 
-/* 隐藏 loading 画面 */
 #loading-screen.hidden {
     opacity: 0;
     visibility: hidden;
@@ -48,120 +45,378 @@ body {
     display: block;
 }
 
-/* Loading 文字 */
-.loading-text {
-    text-align: center;
+.loading-percent {
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: .3em;
+    padding-left: .3em;
+    color: #ff7fae;
 }
 
+.loading-bar {
+    width: 180px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 122, 174, .18);
+    overflow: hidden;
+}
 
-/* 添加白色蒙版 */
-section::before {
-    content: "";
+.loading-bar > div {
+    height: 100%;
+    width: 0;
+    border-radius: 2px;
+    background: linear-gradient(90deg, #ff9ec7, #ff5f9e);
+    transition: width .3s ease;
+}
+
+/* ========== 照片墙 ========== */
+section {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.2);
-    z-index: 1;
+    z-index: 0;  /* 不能为负：负值会让 body 挡住命中测试，:hover 放大与悬停暂停全部失效 */
 }
 
-/* 居中文字 */
+/* 暗角 + 上下渐隐，让中间文字区干净、边缘照片融入背景 */
+section::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background:
+        linear-gradient(180deg, rgba(12, 6, 24, .85) 0%, rgba(12, 6, 24, .25) 16%, rgba(12, 6, 24, 0) 30%),
+        linear-gradient(0deg, rgba(12, 6, 24, .85) 0%, rgba(12, 6, 24, .25) 16%, rgba(12, 6, 24, 0) 30%),
+        radial-gradient(120% 90% at 50% 50%, rgba(0, 0, 0, .10) 40%, rgba(5, 2, 12, .52) 100%);
+    z-index: 1;
+    pointer-events: none;
+}
+
+.images-gallery {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 0 10px;
+    overflow: hidden;
+    height: 100vh;
+    transition: filter .5s ease;
+}
+
+/* 放大预览打开时：整面照片墙模糊成光斑散景 */
+.images-gallery.lb-blur {
+    filter: blur(16px) brightness(.92) saturate(1.1);
+}
+
+.column {
+    flex: 1;
+    min-width: 0;
+    will-change: transform;
+}
+
+.column div {
+    margin-bottom: 10px;
+    border: 3px solid rgba(255, 255, 255, .92);
+    border-radius: 12px;
+    box-shadow: 0 6px 22px rgba(0, 0, 0, .38);
+    overflow: hidden;
+    background: rgba(255, 255, 255, .06);
+    transition: transform .45s ease;
+}
+
+/* 已回收的照片：等高占位块，不可见 */
+.column div.consumed {
+    visibility: hidden;
+    border-color: transparent;
+    box-shadow: none;
+    background: none;
+}
+
+/* 鼠标悬停：单张照片轻微放大（仅限真实悬停设备） */
+@media (hover: hover) and (pointer: fine) {
+    .column div:hover {
+        transform: scale(1.05);
+        position: relative;
+        z-index: 2;
+    }
+}
+
+/* 白边相框 + 圆角 + 柔影 */
+.column img {
+    width: 100%;
+    display: block;
+    border-radius: 9px;   /* 外框 12px - 3px 边框 */
+    /* 渐显：加载完成前模糊微缩，完成后平滑变清晰 */
+    opacity: 0;
+    transform: scale(1.05);
+    filter: blur(12px);
+    transition: opacity .6s ease, filter .6s ease, transform .6s ease;
+}
+
+.column img.loaded {
+    opacity: 1;
+    transform: none;
+    filter: none;
+}
+
+/* 首屏入场：加载页淡出后，首屏照片错峰上浮浮现 */
+.images-gallery.enter .column > div.tile-enter {
+    animation: tileIn .7s ease backwards;
+}
+
+@keyframes tileIn {
+    from {
+        opacity: 0;
+        transform: translateY(28px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+/* ========== 中央文字与计时器 ========== */
 .overlay-div {
     width: 100%;
     position: fixed;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    color: rgb(255, 255, 255);
     z-index: 2;
-    text-align: center;
-    vertical-align: middle;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
+    pointer-events: none;
 }
 
 .overlay-text {
-    font-weight: bold;
-    font-size: 5vw;
+    font-family: 'Kaiti SC', 'STKaiti', 'KaiTi', 'Poppins', sans-serif;
+    font-weight: 700;
+    font-size: clamp(2.6rem, 6.5vw, 5.2rem);
+    letter-spacing: .14em;
+    padding-left: .14em;
+    color: white;
+    background: linear-gradient(180deg, #ffffff 30%, #ffd6e7 72%, #ff9ec7 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 2px 18px rgba(255, 105, 180, .38));
 }
 
-.small-font {
-    font-size: 2vw;
+.overlay-sub {
+    margin-top: 1.8vh;
+    font-size: clamp(.8rem, 1.6vw, 1.05rem);
+    letter-spacing: .5em;
+    padding-left: .5em;
+    color: rgba(255, 255, 255, .82);
+    text-shadow: 0 1px 8px rgba(0, 0, 0, .55);
 }
 
-section {
+/* 计时器：毛玻璃暗卡 + 白字 + 粉色标签（覆盖 fliptimer 亮色主题） */
+.overlay-div .fliptimer {
+    margin-top: 3vh;
+    filter: drop-shadow(0 6px 18px rgba(0, 0, 0, .35));
+}
+
+.overlay-div .fliptimer .rotor-group-heading:before {
+    color: rgba(255, 190, 215, .9);
+    letter-spacing: .2em;
+}
+
+.overlay-div .fliptimer.fliptimer__theme-light .rotor,
+.overlay-div .fliptimer.fliptimer__theme-light .rotor-top,
+.overlay-div .fliptimer.fliptimer__theme-light .rotor-leaf-front {
+    color: #ffffff;
+    background-color: rgba(20, 10, 32, .55);
+}
+
+.overlay-div .fliptimer.fliptimer__theme-light .rotor-bottom,
+.overlay-div .fliptimer.fliptimer__theme-light .rotor-leaf-rear {
+    color: rgba(255, 255, 255, .88);
+    background-color: rgba(20, 10, 32, .38);
+}
+
+.overlay-div .fliptimer.fliptimer__theme-light .rotor:after {
+    border-top-color: rgba(255, 255, 255, .28);
+}
+
+.overlay-div .fliptimer.fliptimer__theme-light .rotor-group:nth-child(n+2):nth-child(-n+3):before,
+.overlay-div .fliptimer.fliptimer__theme-light .rotor-group:nth-child(n+2):nth-child(-n+3):after {
+    background-color: rgba(255, 255, 255, .65);
+}
+
+/* ========== 漂浮爱心层（墙面之上、标题文字之下） ========== */
+#floatHearts {
     position: fixed;
-    top: 0;
-    left: 0;
+    inset: 0;
     width: 100%;
     height: 100%;
-    z-index: -1;
+    pointer-events: none;
+    z-index: 1;
 }
 
-
-section {
-    width: 100%;
-    /* margin: 3vw auto; */
-}
-
-h1 {
-    text-align: center;
-    margin-bottom: 3vw;
-    font-size: 3vw;
-    text-transform: capitalize;
-}
-
-/* .images-gallery {
+/* ========== 点击放大预览（全局模糊 → 光斑 → 汇聚成照片） ========== */
+#lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 5000;
     display: flex;
-    flex-wrap: wrap;
-    overflow-y: hidden;
-    height: 100vh;
-    position: relative;
-} 
-*/
-
-
-
-.images-gallery {
-    display: flex;
-    align-items: flex-start;
-    /* 让列的高度根据内容变化 */
-    overflow: hidden;
-    /* 隐藏滚动条 */
-    height: 100vh;
+    align-items: center;
+    justify-content: center;
+    background: rgba(5, 2, 12, .88);
+    backdrop-filter: blur(6px);
+    opacity: 0;
+    transition: opacity .25s ease;
+    cursor: zoom-out;
 }
 
-.column {
-    flex-grow: 1;
-    width: 33.3333%;
+#lightbox.open {
+    opacity: 1;
 }
 
-.column img {
+#lightbox[hidden] {
+    display: none;
+}
+
+#bokehCanvas {
+    position: absolute;
+    inset: 0;
     width: 100%;
-    display: block;
+    height: 100%;
+    pointer-events: none;
 }
 
-.column:nth-child(odd) {
-    padding-right: 0.1vw;
-    padding-left: 0.1vw;
+#lb-img {
+    max-width: 92vw;
+    max-height: 86vh;
+    border-radius: 10px;
+    border: 3px solid rgba(255, 255, 255, .92);
+    box-shadow: 0 20px 80px rgba(0, 0, 0, .6);
+    /* 光斑态：隐藏，等待光斑汇聚完成后显现（JS 到点加 .reveal） */
+    opacity: 0;
+    filter: blur(26px);
+    transform: scale(1.05);
+    transition: filter .35s ease, opacity .35s ease, transform .35s ease;
 }
 
-.column div {
-    margin-top: 0.1vw;
-    margin-bottom: 0.1vw;
+/* 汇聚完成：大图显现（唯一显现路径，由 .reveal class 触发 CSS 过渡） */
+#lightbox.open #lb-img.reveal {
+    opacity: 1;
+    filter: none;
+    transform: none;
+    transition: filter .6s ease-out, opacity .5s ease-out, transform .5s ease-out;
 }
 
+/* 拍摄日期角标：收尾后延迟浮现 */
+#lb-date {
+    position: absolute;
+    left: 28px;
+    bottom: 26px;
+    padding: 7px 16px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .14);
+    border: 1px solid rgba(255, 255, 255, .22);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: #fff;
+    font-size: 13px;
+    letter-spacing: 1px;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity .5s ease .8s, transform .5s ease .8s;
+    pointer-events: none;
+}
+
+#lightbox.open #lb-date.has {
+    opacity: 1;
+    transform: none;
+}
+
+.lb-arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, .14);
+    color: #fff;
+    font-size: 2rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.lb-arrow:hover {
+    background: rgba(255, 255, 255, .3);
+}
+
+.lb-prev {
+    left: 3vw;
+}
+
+.lb-next {
+    right: 3vw;
+}
+
+/* ========== 响应式 ========== */
 @media screen and (max-width: 768px) {
     .overlay-text {
-        font-size: 7vw;
+        font-size: clamp(2.2rem, 9vw, 3.4rem);
+    }
+
+    .images-gallery {
+        gap: 6px;
+        padding: 0 6px;
+    }
+
+    .column div {
+        margin-bottom: 6px;
+    }
+
+    .column div {
+        border-width: 2px;
+        border-radius: 9px;
+    }
+
+    .column img {
+        border-radius: 7px;
+    }
+
+    .overlay-div .fliptimer {
+        transform: scale(.78);
+        transform-origin: center top;
+        margin-top: 1vh;
     }
 }
 
-@media screen and (max-width: 576px) {
-    .overlay-text {
-        font-size: 8vw;
+/* 用户系统开启"减少动态效果"时，把滚动降到最低 */
+@media (prefers-reduced-motion: reduce) {
+    .images-gallery {
+        will-change: auto;
+        transition: none;
+    }
+
+    .images-gallery.lb-blur {
+        filter: none;
+    }
+
+    .column img {
+        transition: none;
+        opacity: 1;
+        transform: none;
+        filter: none;
+    }
+
+    .images-gallery.enter .column > div.tile-enter {
+        animation: none;
+    }
+
+    #lb-img,
+    #lightbox.open #lb-img.reveal {
+        transition: none;
+        opacity: 1;
+        filter: none;
+        transform: none;
     }
 }

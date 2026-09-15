@@ -1,64 +1,87 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 
 <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <title>Love U</title>
+    <title>Love U 💖</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%92%96%3C/text%3E%3C/svg%3E">
     <meta name="description" content="">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="./style.css">
+    <link rel="stylesheet" href="./style.css?v=20260914">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://best-images.oss-cn-beijing.aliyuncs.com" crossorigin>
+    <link rel="dns-prefetch" href="https://best-images.oss-cn-beijing.aliyuncs.com">
     <link href="https://fonts.googleapis.com/css2?family=Poppins&display=swap" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="fliptimer/fliptimer.css">
     <script type="text/javascript" src="fliptimer/fliptimer.js"></script>
+    <script>
+        window.__errs = [];
+        window.addEventListener("error", function (e) {
+            window.__errs.push((e.message || "?") + " @ " + (e.filename || "").split("/").pop() + ":" + e.lineno);
+        });
+    </script>
 </head>
 
 <body>
     <div id="loading-screen">
         <canvas id="heartCanvas"></canvas>
-
+        <div class="loading-bar"><div id="loadBarFill"></div></div>
+        <div class="loading-percent" id="loadPercent">0%</div>
     </div>
 
 
+    <canvas id="floatHearts"></canvas>
+
     <div class="overlay-div">
         <div class="overlay-text">我们相恋了</div>
+        <div class="overlay-sub">❤ SINCE 2024 · 08 · 30 ❤</div>
         <div id="fliptimer" class="fliptimer"></div>
     </div>
 
     <section>
-        <div class="images-gallery" id="images-gallery">
-            <div class="column">
-
-            </div>
-            <div class="column">
-
-            </div>
-            <div class="column">
-
-            </div>
-        </div>
+        <div class="images-gallery" id="images-gallery"></div>
     </section>
+
+    <div id="lightbox" hidden>
+        <canvas id="bokehCanvas"></canvas>
+        <img id="lb-img" alt="回忆大图">
+        <div id="lb-date"></div>
+        <button class="lb-arrow lb-prev" aria-label="上一张">‹</button>
+        <button class="lb-arrow lb-next" aria-label="下一张">›</button>
+    </div>
+
     <script src="./urls.js"></script>
+    <script src="./dates.js"></script>
 
     <script>
         var startTime = new Date("2024-08-30T22:00:00").getTime() / 1000 - 86400; // 目标时间
-        let body = document.body;
-        var flipdown = new FlipTimer(startTime).start()
-        body.querySelector('#fliptimer').classList.toggle('fliptimer__theme-light');
+        var flipdown = new FlipTimer(startTime, { headings: ["天", "时", "分", "秒"], theme: "light" }).start()
 
         document.addEventListener("DOMContentLoaded", function () {
             const gallery = document.getElementById("images-gallery");
-            const columns = document.querySelectorAll(".column");
+            const sectionEl = document.querySelector("section");
             const loadingScreen = document.getElementById("loading-screen");
 
-            let scrollSpeed = 0.7; // 控制滚动速度
-            let scrollPosition = 0; // 记录当前滚动位置
-            let isLoaded = false; // **是否加载完成**
+            const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+            const curCols = () => (window.innerWidth >= 1600 ? 5 : window.innerWidth >= 1100 ? 4 : 3);   // 屏幕越宽列越多，单张越小
+            const curThumb = () => '?x-oss-process=image/resize,w_' + (window.innerWidth >= 1600 ? 640 : 720) + ',quality,q_80,format,webp';
+            let scrollSpeed = reducedMotion ? 0.1 : (window.innerWidth >= 1100 ? 1.0 : 0.7);   // 随窗口宽度可更新
+            const tiltEnabled = !reducedMotion && desktopFine();     // 鼠标视差仅限桌面鼠标
+            function desktopFine() {
+                return window.innerWidth >= 1100 && window.matchMedia("(pointer: fine)").matches;
+            }
 
-            let totalImages = columns.length * 8; // 计算所有需要加载的图片数量
-            let loadedImages = 0; // 记录已加载的图片数量
+            let scrollPosition = 0;   // 记录当前滚动位置
+            let wavePhase = 0;        // 波浪漂移相位
+            let isLoaded = false;     // **是否加载完成**
+            let lbOpen = false;       // 放大预览打开时暂停滚动
+
+            let totalImages = 0;      // 所有需要加载的图片数量
+            let loadedImages = 0;     // 记录已加载的图片数量
+            let progressPercent = 0;  // 进度条（0~100）
+            const columns = [];
 
             // 获取 Canvas
             const canvas = document.getElementById("heartCanvas");
@@ -66,13 +89,11 @@
             canvas.width = 210;
             canvas.height = 210;
 
-            const centerX = canvas.width / 2;  // 重新计算中心 X
-            const centerY = canvas.height / 2; // 重新计算中心 Y
-
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
 
             const particles = [];
             const particleCount = 700; // 粒子数量
-            let progressPercent = 0; // 进度条（0~100）
 
             // **爱心路径公式**
             function heartFunction(t) {
@@ -85,12 +106,12 @@
             // **生成粒子**
             function createParticles() {
                 for (let i = 0; i < particleCount; i++) {
-                    let t = (Math.PI * 2 * i) / particleCount; // 均匀分布
+                    let t = (Math.PI * 2 * i) / particleCount;
                     let pos = heartFunction(t);
                     particles.push({
-                        x: pos.x + (Math.random() - 0.5) * 11, // 增加随机偏移
+                        x: pos.x + (Math.random() - 0.5) * 11,
                         y: pos.y + (Math.random() - 0.5) * 11,
-                        alpha: 0 // 透明度，随着进度渐变
+                        alpha: 0
                     });
                 }
             }
@@ -100,54 +121,70 @@
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 particles.forEach((p, index) => {
                     if (index / particleCount < progressPercent / 100) {
-                        p.alpha = Math.min(p.alpha + 0.02, 1); // 透明度逐渐增加
+                        p.alpha = Math.min(p.alpha + 0.02, 1);
                     }
-                    ctx.fillStyle = `rgba(255, 20, 147, ${p.alpha})`; // 更鲜艳的粉色
+                    ctx.fillStyle = `rgba(255, 20, 147, ${p.alpha})`;
                     ctx.beginPath();
-                    ctx.arc(p.x, p.y, 4, 0, Math.PI * 2); // 粒子半径增大到 4px
+                    ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
                     ctx.fill();
                 });
             }
 
-
-            // **工具函数：随机获取图片**
+            // **工具函数：随机获取图片（洗牌抽牌，同屏绝不重复）**
+            let deck = [];
             function getRandomImage() {
-                const randomIndex = Math.floor(Math.random() * photoUrls.length);
-                return photoUrls[randomIndex];
+                if (!deck.length) {
+                    // 重洗时排除屏幕上正在显示的照片
+                    const shown = new Set(Array.from(document.querySelectorAll(".column img")).map(im => im.src.split("?")[0]));
+                    deck = photoUrls.filter(u => !shown.has(u));
+                    for (let i = deck.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [deck[i], deck[j]] = [deck[j], deck[i]];
+                    }
+                    if (!deck.length) deck = photoUrls.slice();   // 极端兜底
+                }
+                return deck.pop();
             }
 
             // **更新加载进度**
             function updateLoadingProgress() {
                 loadedImages++;
                 progressPercent = Math.round((loadedImages / totalImages) * 100);
+                document.getElementById("loadPercent").textContent = progressPercent + "%";
+                document.getElementById("loadBarFill").style.width = progressPercent + "%";
 
                 drawParticles(); // 重新绘制粒子
 
                 if (loadedImages === totalImages) {
                     setTimeout(() => {
                         loadingScreen.classList.add("hidden"); // 使用 CSS 过渡隐藏
+                        gallery.classList.add("enter");        // 首屏照片错峰入场
                         isLoaded = true; // **加载完成，允许滚动**
                         requestAnimationFrame(autoScroll); // **开始滚动**
                     }, 500);
                 }
             }
 
+            // **按屏宽建列（3/4/5 列），列间错落**
+            function buildColumns() {
+                gallery.innerHTML = "";
+                columns.length = 0;
+                const n = curCols();
+                for (let i = 0; i < n; i++) {
+                    const col = document.createElement("div");
+                    col.className = "column";
+                    col.style.marginTop = ((i * 7) % 22) + "vh";
+                    gallery.appendChild(col);
+                    columns.push(col);
+                }
+                totalImages = columns.length * 8;
+            }
+
             // **1. 初始化，每个 column 先填充 8 张图片**
-            function initializeGallery() {
+            function initializeGallery(track) {
                 columns.forEach((column) => {
                     for (let i = 0; i < 8; i++) {
-                        const newDiv = document.createElement("div");
-                        const newImg = document.createElement("img");
-                        newImg.src = getRandomImage() + '?x-oss-process=image/resize,p_20';
-                        newImg.alt = "img";
-
-
-                        // **监听图片加载完成**
-                        newImg.onload = updateLoadingProgress;
-                        newImg.onerror = updateLoadingProgress; // 即使加载失败，也算作完成
-
-                        newDiv.appendChild(newImg);
-                        column.appendChild(newDiv);
+                        addNewImageToColumn(column, track);
                     }
                 });
             }
@@ -165,32 +202,571 @@
             }
 
             // **3. 只给触底的 column 添加图片**
-            function addNewImageToColumn(column) {
+            let enterSeq = 0;         // 首屏入场动画的错峰序号
+            function addNewImageToColumn(column, trackProgress) {
                 const newDiv = document.createElement("div");
+                const base = getRandomImage();
                 const newImg = document.createElement("img");
-                newImg.src = getRandomImage() + '?x-oss-process=image/resize,p_20';
-                newImg.alt = "img";
+                newImg.src = base + curThumb();
+                newImg.alt = "我们的照片";
+                newImg.draggable = false;
+
+                // **模糊光斑合成：先用 24px 超小缩略图垫底（瞬间加载的朦胧色块），高清图加载后平滑清晰化**
+                newDiv.style.backgroundImage = 'url("' + base + '?x-oss-process=image/resize,w_24,quality,q_60,format,webp")';
+                newDiv.style.backgroundSize = "cover";
+                newDiv.style.backgroundPosition = "center";
+
+                // **渐显：加载完成前模糊微缩，完成后平滑变清晰**
+                const reveal = () => newImg.classList.add("loaded");
+                if (newImg.complete) reveal();
+                else {
+                    newImg.addEventListener("load", reveal);
+                    newImg.addEventListener("error", reveal);
+                }
+
+                if (trackProgress) {
+                    // **监听图片加载完成**
+                    newImg.onload = updateLoadingProgress;
+                    newImg.onerror = updateLoadingProgress; // 即使加载失败，也算作完成
+                    newDiv.classList.add("tile-enter");     // 首屏入场动画
+                    newDiv.style.animationDelay = (enterSeq++ * 55) + "ms";
+                }
+
                 newDiv.appendChild(newImg);
                 column.appendChild(newDiv);
             }
 
-            // **4. 自动滚动**
+            // **鼠标视差（桌面端）**
+            let tiltX = 0, tiltY = 0, tgtX = 0, tgtY = 0;
+            if (tiltEnabled) {
+                document.addEventListener("mousemove", (e) => {
+                    tgtY = (e.clientX / window.innerWidth - 0.5) * 3.2;
+                    tgtX = (0.5 - e.clientY / window.innerHeight) * 2.2;
+                });
+            }
+
+            function tiltStep() {
+                if (!tiltEnabled) return;
+                tiltX += (tgtX - tiltX) * 0.06;
+                tiltY += (tgtY - tiltY) * 0.06;
+                gallery.style.transform =
+                    "perspective(1400px) rotateX(" + tiltX.toFixed(3) + "deg) rotateY(" + tiltY.toFixed(3) + "deg) scale(1.02)";
+            }
+
+            // **内存回收：滚出屏幕很远的照片原地转为等高占位块（布局零变化，立即释放图片）**
+            function recycleFar() {
+                columns.forEach(col => {
+                    const kids = col.children;
+                    let i = 0;
+                    while (i < kids.length && kids[i].classList.contains("consumed")) i++;
+                    if (i >= kids.length) return;             // 前面全是占位块
+                    const tile = kids[i];
+                    if (tile.getBoundingClientRect().bottom > -1800) return;   // 还不够远
+                    const mb = parseFloat(getComputedStyle(tile).marginBottom) || 0;
+                    tile.classList.add("consumed");
+                    tile.style.height = tile.offsetHeight + "px";
+                    tile.style.marginBottom = mb + "px";
+                    tile.innerHTML = "";                      // 释放图片
+                });
+            }
+
+            // **4. 自动滚动（循环常驻）**
             function autoScroll() {
-                if (!isLoaded) return; // **未加载完成前不滚动**
+                if (isLoaded) {
+                    recycleFar();          // 回收滚出很远的照片
+                    if (!lbOpen) {         // 放大预览打开时暂停滚动
+                        checkColumns(); // 检查是否有列触底
 
-                checkColumns(); // 每帧检查是否有列触底
+                        scrollPosition += scrollSpeed;
+                        wavePhase += scrollSpeed;
+                        gallery.scrollTop = scrollPosition;
 
-                scrollPosition += scrollSpeed;
-                gallery.scrollTop = scrollPosition;
-
+                        // 各列相位错开的轻微波浪漂移
+                        for (let i = 0; i < columns.length; i++) {
+                            columns[i].style.transform =
+                                "translateY(" + (Math.sin(wavePhase / 700 + i * 1.7) * 26).toFixed(1) + "px)";
+                        }
+                    }
+                }
+                tiltStep();
                 requestAnimationFrame(autoScroll);
             }
 
-            createParticles(); // 创建粒子
-            initializeGallery(); // 开始加载图片
-            drawParticles(); // 先绘制空白爱心
+            // ===== 点击照片放大预览：光斑从屏幕四边汇聚成照片 =====
+            const lb = document.getElementById("lightbox");
+            const lbImg = document.getElementById("lb-img");
+            const BIG = '?x-oss-process=image/resize,w_1400,quality,q_85,format,webp';
+            let lbIndex = 0, lbSrcs = [];
+
+            // 光斑画布（灯箱内的光斑层）
+            const bCanvas = document.getElementById("bokehCanvas");
+            const bCtx = bCanvas.getContext("2d");
+            let bw = 0, bh = 0;
+            function sizeBokeh() {
+                const dpr = Math.min(window.devicePixelRatio || 1, 2);
+                bw = window.innerWidth; bh = window.innerHeight;
+                bCanvas.width = bw * dpr; bCanvas.height = bh * dpr;
+                bCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            }
+            sizeBokeh();
+            window.addEventListener("resize", sizeBokeh);
+
+            // 朦胧色球 sprite（按量化颜色懒生成，颜色忠于照片像素）
+            const spriteCache = new Map();
+            function softSprite(k) {
+                let sp = spriteCache.get(k);
+                if (sp) return sp;
+                const R = ((k >> 10) & 31) * 8 + 4, G = ((k >> 5) & 31) * 8 + 4, B = (k & 31) * 8 + 4;
+                sp = document.createElement("canvas");
+                sp.width = sp.height = 24;
+                const g2 = sp.getContext("2d");
+                const grad = g2.createRadialGradient(12, 12, 0, 12, 12, 12);
+                grad.addColorStop(0, "rgba(" + R + "," + G + "," + B + ",0.9)");
+                grad.addColorStop(0.32, "rgba(" + R + "," + G + "," + B + ",0.4)");
+                grad.addColorStop(1, "rgba(" + R + "," + G + "," + B + ",0)");
+                g2.fillStyle = grad;
+                g2.fillRect(0, 0, 24, 24);
+                spriteCache.set(k, sp);
+                return sp;
+            }
+
+            // 粗采样：7 列取色（颜色 = 照片对应位置的真实像素）
+            function sampleParticles(img, cols) {
+                try {
+                    const rows = Math.max(2, Math.round(cols * img.height / img.width));
+                    const c = document.createElement("canvas");
+                    c.width = cols; c.height = rows;
+                    const g = c.getContext("2d", { willReadFrequently: true });
+                    g.drawImage(img, 0, 0, cols, rows);
+                    const data = g.getImageData(0, 0, cols, rows).data;
+                    const pts = [];
+                    for (let y = 0; y < rows; y++) {
+                        for (let x = 0; x < cols; x++) {
+                            const i = (y * cols + x) * 4;
+                            if (data[i + 3] < 40) continue;
+                            pts.push({
+                                tx: (x + 0.5) / cols, ty: (y + 0.5) / rows,
+                                k: ((data[i] >> 3) << 10) | ((data[i + 1] >> 3) << 5) | (data[i + 2] >> 3)
+                            });
+                        }
+                    }
+                    return pts.length ? { pts: pts, cols: cols, rows: rows } : null;
+                } catch (e) {
+                    return null;   // 跨域采样失败则跳过粒子汇聚，直接显示照片
+                }
+            }
+
+            // 汇聚动画状态：光斑从屏幕四边飞向照片内对应色块位置。
+            // 大图的显现不依赖画布：到点由定时器给大图加 .reveal class，CSS 过渡接管；
+            // 画布循环哪怕停摆（异常 / rAF 暂停 / 减少动态偏好），照片也必然显现。
+            let conv = null;           // {orbs,bg,pal,rx,ry,w,h,start,showAt}
+            let burst = null;          // 收尾散发光斑：{orbs:[{x,y,dx,dy,dist,r,dur,delay,a,sp}], start}
+            let corsSeq = 0;
+            let convSeq = 0;           // 汇聚代次：切换/关闭照片后使旧回调作废
+            let convTimers = [];
+
+            function revealPhoto() {   // 大图显现的唯一出口（幂等）
+                const was = lbImg.classList.contains("reveal");
+                lbImg.classList.add("reveal");
+                // 收尾：从照片边缘向外散发光斑（颜色取自照片），渐远渐隐
+                if (!was && conv && conv.pal && !reducedMotion) {
+                    const R = Math.min(window.innerWidth, window.innerHeight);
+                    const cx = conv.rx + conv.w / 2, cy = conv.ry + conv.h / 2;
+                    const N = 26, per = 2 * (conv.w + conv.h);
+                    const orbs = [];
+                    for (let i = 0; i < N; i++) {
+                        let d = ((i + Math.random() * 0.6) / N) * per, x, y;
+                        if (d < conv.w) { x = d; y = 0; }
+                        else if ((d -= conv.w) < conv.h) { x = conv.w; y = d; }
+                        else if ((d -= conv.h) < conv.w) { x = conv.w - d; y = conv.h; }
+                        else { d -= conv.w; x = 0; y = conv.h - d; }
+                        const sx = conv.rx + x, sy = conv.ry + y;
+                        let dx = sx - cx, dy = sy - cy;               // 向外 = 背离照片中心
+                        const len = Math.hypot(dx, dy) || 1;
+                        dx /= len; dy /= len;
+                        const k = conv.pal[Math.floor(Math.random() * conv.pal.length)].k;
+                        orbs.push({
+                            x: sx + dx * 8, y: sy + dy * 8,           // 从照片边缘后侧钻出
+                            dx: dx, dy: dy,
+                            dist: 110 + Math.random() * 220,
+                            r: R * (0.012 + Math.random() * 0.028),
+                            dur: 1000 + Math.random() * 700,
+                            delay: Math.random() * 260,
+                            a: 0.5 + Math.random() * 0.35,
+                            sp: softSprite(k)
+                        });
+                    }
+                    burst = { orbs: orbs, start: performance.now() };
+                }
+            }
+
+            // 从一张小尺寸 CORS 副本快速取色（200px，百毫秒级就绪），随后开始汇聚动画
+            function startConverge() {
+                convSeq++;
+                const seq = convSeq;
+                convTimers.forEach(clearTimeout);
+                convTimers = [];
+                conv = null;
+                burst = null;
+                lbImg.classList.remove("reveal");   // 回到光斑态
+                void lbImg.offsetWidth;             // 立即生效，确保下次 reveal 从头过渡
+                (window.__log = window.__log || []).push("sc:start");
+
+                // 兜底保险：无论采样/加载/动画发生什么，2.4s 内大图必然显现
+                convTimers.push(setTimeout(() => {
+                    if (seq === convSeq && lbOpen) {
+                        (window.__log = window.__log || []).push("sc:safety");
+                        revealPhoto();
+                    }
+                }, 2400));
+
+                if (reducedMotion) { revealPhoto(); return; }   // 减少动态：跳过光斑动画直接显示
+
+                const im = new Image();
+                im.crossOrigin = "anonymous";
+                im.onload = () => {
+                    try {
+                        if (seq !== convSeq) return;
+                        (window.__log = window.__log || []).push("sc:img-loaded");
+                        const aspect = im.naturalWidth / im.naturalHeight;
+                        const maxW = window.innerWidth * 0.92, maxH = window.innerHeight * 0.86;
+                        let w = maxW, h = w / aspect;
+                        if (h > maxH) { h = maxH; w = h * aspect; }
+                        const rx = (window.innerWidth - w) / 2, ry = (window.innerHeight - h) / 2;
+                        const s = sampleParticles(im, 7);      // 7 列取色，全部色块都成为光斑
+                        if (!s || !s.pts.length) {             // 采样失败：直接显示照片
+                            (window.__log = window.__log || []).push("sc:sample-fail");
+                            revealPhoto();
+                            return;
+                        }
+                        const R = Math.min(window.innerWidth, window.innerHeight);
+                        const orbs = s.pts.map(p => {
+                            const side = Math.floor(Math.random() * 4);
+                            let sx, sy;
+                            if (side === 0) { sx = Math.random() * window.innerWidth; sy = -R * 0.12; }
+                            else if (side === 1) { sx = window.innerWidth + R * 0.12; sy = Math.random() * window.innerHeight; }
+                            else if (side === 2) { sx = Math.random() * window.innerWidth; sy = window.innerHeight + R * 0.12; }
+                            else { sx = -R * 0.12; sy = Math.random() * window.innerHeight; }
+                            return {
+                                k: p.k, sp: softSprite(p.k),
+                                sx: sx, sy: sy,                // 起点：屏幕四边之外
+                                tx: rx + p.tx * w,             // 目标：照片内对应色块中心（铺满全图）
+                                ty: ry + p.ty * h,
+                                r: R * (0.06 + Math.random() * 0.08),   // 半径 6%~14%，起飞时再放大
+                                dur: 800 + Math.random() * 400,         // 飞行时长
+                                delay: Math.random() * 250              // 错峰出发
+                            };
+                        });
+                        // 预渲染"原图模糊版"：圆角 + 边缘羽化，与最终照片卡片轮廓一致，
+                        // 避免生硬的模糊矩形；光斑归位时由它接管
+                        const bg = document.createElement("canvas");
+                        bg.width = Math.max(2, Math.round(w)); bg.height = Math.max(2, Math.round(h));
+                        const bgc = bg.getContext("2d");
+                        try { bgc.filter = "blur(" + Math.max(6, w * 0.012).toFixed(1) + "px)"; } catch (e) {}
+                        bgc.drawImage(im, -w * 0.03, -h * 0.03, w * 1.06, h * 1.06);   // 出血绘制，防模糊边缘透出
+                        try { bgc.filter = "none"; } catch (e) {}
+                        bgc.globalCompositeOperation = "destination-in";
+                        try { bgc.filter = "blur(12px)"; } catch (e) {}
+                        bgc.fillStyle = "#fff";
+                        const mg = 18, rad = 18, iw = w - mg * 2, ih = h - mg * 2;
+                        bgc.beginPath();
+                        bgc.moveTo(mg + rad, mg);
+                        bgc.arcTo(mg + iw, mg, mg + iw, mg + ih, rad);
+                        bgc.arcTo(mg + iw, mg + ih, mg, mg + ih, rad);
+                        bgc.arcTo(mg, mg + ih, mg, mg, rad);
+                        bgc.arcTo(mg, mg, mg + iw, mg, rad);
+                        bgc.closePath();
+                        bgc.fill();
+                        try { bgc.filter = "none"; } catch (e) {}
+                        bgc.globalCompositeOperation = "source-over";
+                        conv = { orbs: orbs, bg: bg, pal: s.pts, rx: rx, ry: ry, w: w, h: h, start: performance.now(), showAt: 950 };
+                        // 到点显现大图：等待大图就绪（最长由 2.4s 兜底接管）
+                        convTimers.push(setTimeout(function tryReveal() {
+                            if (seq !== convSeq || !lbOpen) return;
+                            if (lbImg.complete && lbImg.naturalWidth > 0) { revealPhoto(); return; }
+                            convTimers.push(setTimeout(tryReveal, 300));
+                        }, conv.showAt));
+                    } catch (err) {
+                        (window.__errs = window.__errs || []).push("conv:" + err.message);
+                        if (seq === convSeq && lbOpen) revealPhoto();
+                    }
+                };
+                im.onerror = () => {
+                    (window.__log = window.__log || []).push("sc:img-error");
+                    if (seq === convSeq && lbOpen) revealPhoto();   // 取色图失败：直接显示照片
+                };
+                im.src = lbSrcs[lbIndex] + '?x-oss-process=image/resize,w_200,quality,q_75,format,webp&pfcors=' + (++corsSeq);
+            }
+
+            function liveSrcs() {
+                return Array.from(document.querySelectorAll(".column img")).map(im => im.src.split("?")[0]);
+            }
+            // 照片拍摄日期（dates.js 提供，无数据的返回 null）
+            const lbDate = document.getElementById("lb-date");
+            function photoDateOf(src) {
+                try {
+                    const name = decodeURIComponent(src.split("?")[0].split("/").pop() || "");
+                    const d = (window.photoDates || {})[name];
+                    return d ? d.replace(/-/g, " · ") : null;
+                } catch (e) { return null; }
+            }
+            function showLB() {
+                lbImg.src = lbSrcs[lbIndex] + BIG;
+                const d = photoDateOf(lbSrcs[lbIndex]);
+                lbDate.textContent = d ? "📷 " + d : "";
+                lbDate.classList.toggle("has", !!d);
+            }
+            function moveLB(step) {
+                lbIndex = (lbIndex + step + lbSrcs.length) % lbSrcs.length;
+                showLB();
+                startConverge();     // 切换照片：重新光斑汇聚
+            }
+            function openLB(idx) {
+                lbSrcs = liveSrcs();
+                if (!lbSrcs.length) return;
+                lbIndex = Math.max(0, Math.min(idx, lbSrcs.length - 1));
+                lb.hidden = false;
+                void lb.offsetWidth;                    // 强制重排，确保过渡起点生效
+                lb.classList.add("open");               // 同步添加：隐藏页签下 rAF 不执行，回调式添加会永久丢失
+                lbOpen = true;
+                showLB();
+                gallery.classList.add("lb-blur");       // 整面照片墙模糊成散景
+                startConverge();                        // 光斑汇聚成大图
+            }
+            function closeLB() {
+                convSeq++;
+                convTimers.forEach(clearTimeout);
+                convTimers = [];
+                conv = null;
+                burst = null;
+                lbImg.classList.remove("reveal");
+                lb.classList.remove("open");
+                gallery.classList.remove("lb-blur");    // 照片墙恢复清晰
+                lbOpen = false;
+                setTimeout(() => { lb.hidden = true; }, 300);
+            }
+
+            // 点击照片打开预览（事件委托，回收/新增的照片都适用）
+            gallery.addEventListener("click", (e) => {
+                if (lbOpen) return;
+                const im = e.target.closest("img");
+                if (!im) return;
+                const srcs = liveSrcs();
+                openLB(Math.max(0, srcs.indexOf(im.src.split("?")[0])));
+            });
+            lb.addEventListener("click", (e) => {
+                if (e.target.classList.contains("lb-prev")) { moveLB(-1); return; }
+                if (e.target.classList.contains("lb-next")) { moveLB(1); return; }
+                closeLB();   // 点击背景或大图本身关闭
+            });
+            document.addEventListener("keydown", (e) => {
+                if (!lbOpen) return;
+                if (e.key === "Escape") closeLB();
+                else if (e.key === "ArrowLeft") moveLB(-1);
+                else if (e.key === "ArrowRight") moveLB(1);
+            });
+
+            // 窗口宽度变化：列数随断点同步重建（防抖；列数没变就不折腾）
+            let rsTimer = null, lastCols = curCols();
+            window.addEventListener("resize", () => {
+                clearTimeout(rsTimer);
+                rsTimer = setTimeout(() => {
+                    const n = curCols();
+                    if (n === lastCols || !isLoaded) return;
+                    lastCols = n;
+                    scrollSpeed = reducedMotion ? 0.1 : (window.innerWidth >= 1100 ? 1.0 : 0.7);
+                    if (lbOpen) closeLB();
+                    deck = [];              // 重洗牌
+                    scrollPosition = 0;
+                    wavePhase = 0;
+                    gallery.scrollTop = 0;
+                    buildColumns();         // 按新宽度重建列数
+                    initializeGallery(false);
+                }, 300);
+            });
+
+            // ===== 灯箱光效循环：漂浮光斑 + 汇聚粒子 =====
+            const BOKEH_COLORS = ["255,236,200", "255,214,150", "255,196,178", "224,228,255"];
+            const bokehSprites = BOKEH_COLORS.map(c => {
+                const s = document.createElement("canvas");
+                s.width = s.height = 48;
+                const g2 = s.getContext("2d");
+                const grad = g2.createRadialGradient(24, 24, 0, 24, 24, 24);
+                grad.addColorStop(0, "rgba(" + c + ",0.9)");
+                grad.addColorStop(0.5, "rgba(" + c + ",0.35)");
+                grad.addColorStop(1, "rgba(" + c + ",0)");
+                g2.fillStyle = grad;
+                g2.fillRect(0, 0, 48, 48);
+                return s;
+            });
+            const MIST_N = window.innerWidth >= 1100 ? 40 : 24;
+            const mists = [];
+            function makeMist() {
+                return {
+                    x: Math.random() * bw, y: Math.random() * bh,
+                    r: 8 + Math.random() * 26,
+                    vx: (Math.random() - 0.5) * 12,
+                    vy: -(4 + Math.random() * 18),
+                    a: 0.2 + Math.random() * 0.45,
+                    ph: Math.random() * 6.283,
+                    sp: bokehSprites[Math.floor(Math.random() * bokehSprites.length)]
+                };
+            }
+            for (let i = 0; i < MIST_N; i++) mists.push(makeMist());
+
+            let lastT = 0;
+            function lbFxLoop(t) {
+                const dt = Math.min((t - lastT) / 1000, 0.05);
+                lastT = t;
+                bCtx.clearRect(0, 0, bw, bh);
+
+                if (lbOpen && !reducedMotion) {
+                    // 背景漂浮光斑
+                    for (const m of mists) {
+                        m.x += m.vx * dt;
+                        m.y += m.vy * dt;
+                        if (m.y < -60) { m.y = bh + 50; m.x = Math.random() * bw; }
+                        const tw = m.a * (0.8 + 0.2 * Math.sin(t / 350 + m.ph));
+                        bCtx.globalAlpha = tw;
+                        bCtx.drawImage(m.sp, m.x - m.r, m.y - m.r, m.r * 2, m.r * 2);
+                    }
+                    // 汇聚光斑：起飞大而羽化 → 途中收紧 → 归位时由"原图模糊版"接管，
+                    // 不让光斑以独立圆环停在照片上；清晰大图随后从模糊版上淡入（.reveal）
+                    if (conv) {
+                        try {
+                            const el = t - conv.start;
+                            const blurP = Math.max(0, Math.min((el - 350) / 600, 1));   // 原图模糊版浮现进度（0.95s 成形）
+                            if (blurP > 0 && conv.bg) {
+                                bCtx.globalAlpha = blurP * 0.96;
+                                bCtx.drawImage(conv.bg, conv.rx, conv.ry, conv.w, conv.h);
+                            }
+                            for (const o of conv.orbs) {
+                                const u = Math.max(0, Math.min((el - o.delay) / o.dur, 1));
+                                if (u <= 0) continue;
+                                const e = 1 - Math.pow(1 - u, 3);
+                                const x = o.sx + (o.tx - o.sx) * e;
+                                const y = o.sy + (o.ty - o.sy) * e;
+                                const rr = o.r * (1.7 - 0.9 * e);   // 起飞 1.7 倍大而朦胧，落位收紧到 0.8 倍
+                                bCtx.globalAlpha = Math.min(1, u * 5) * (1 - blurP * 0.9);
+                                bCtx.drawImage(o.sp, x - rr, y - rr, rr * 2, rr * 2);
+                            }
+                            bCtx.globalAlpha = 1;
+                            // 清晰大图已显现并完成交接后才撤掉画布；大图未就绪则停留在模糊版上等待
+                            if (lbImg.classList.contains("reveal") && el > conv.showAt + 600) conv = null;
+                        } catch (err) {
+                            (window.__errs = window.__errs || []).push("fx:" + err.message);
+                            conv = null;    // 画布异常不影响照片显现
+                        }
+                    }
+                    // 收尾散发光斑：从照片边缘向外扩散、渐远渐隐（颜色取自照片）
+                    if (burst) {
+                        try {
+                            const el = t - burst.start;
+                            for (const o of burst.orbs) {
+                                const u = Math.max(0, Math.min((el - o.delay) / o.dur, 1));
+                                if (u <= 0 || u >= 1) continue;
+                                const e = 1 - Math.pow(1 - u, 3);
+                                const x = o.x + o.dx * o.dist * e;
+                                const y = o.y + o.dy * o.dist * e;
+                                const rr = o.r * (1 + 0.6 * u);
+                                const a = o.a * (u < 0.18 ? u / 0.18 : 1 - (u - 0.18) / 0.82);
+                                bCtx.globalAlpha = a;
+                                bCtx.drawImage(o.sp, x - rr, y - rr, rr * 2, rr * 2);
+                            }
+                            bCtx.globalAlpha = 1;
+                            if (el > 2100) burst = null;
+                        } catch (err) {
+                            burst = null;
+                        }
+                    }
+                }
+                requestAnimationFrame(lbFxLoop);
+            }
+
+            // ===== 漂浮爱心层：墙面上下缓缓漂浮的小爱心 =====
+            const hCanvas = document.getElementById("floatHearts");
+            const hCtx = hCanvas.getContext("2d");
+            let hw = 0, hh = 0;
+            function sizeHearts() {
+                const dpr = Math.min(window.devicePixelRatio || 1, 2);
+                hw = window.innerWidth; hh = window.innerHeight;
+                hCanvas.width = hw * dpr; hCanvas.height = hh * dpr;
+                hCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            }
+            sizeHearts();
+            window.addEventListener("resize", sizeHearts);
+
+            // 粉色系心形 sprite（预渲染，带一点柔光）
+            const HEART_COLORS = ["255,105,180", "255,143,165", "255,182,193", "255,205,178"];
+            const heartSprites = HEART_COLORS.map(c => {
+                const s = document.createElement("canvas");
+                s.width = s.height = 48;
+                const g = s.getContext("2d");
+                g.translate(24, 25);
+                g.beginPath();
+                g.moveTo(0, 10);
+                g.bezierCurveTo(-16, -3, -12, -17, 0, -9);
+                g.bezierCurveTo(12, -17, 16, -3, 0, 10);
+                g.closePath();
+                g.shadowColor = "rgba(" + c + ",0.85)";
+                g.shadowBlur = 5;
+                g.fillStyle = "rgba(" + c + ",0.9)";
+                g.fill();
+                g.fill();
+                return s;
+            });
+
+            const HEART_N = reducedMotion ? 0 : (window.innerWidth >= 1100 ? 14 : 8);
+            const hearts = [];
+            function makeHeart(init) {
+                const depth = Math.random();   // 远近层次：远的更小更淡更慢
+                return {
+                    x: Math.random() * hw,
+                    y: init ? Math.random() * hh : hh + 40,
+                    r: 7 + depth * 15 + Math.random() * 6,
+                    vy: 14 + (1 - depth) * 24 + Math.random() * 14,   // 上升速度 px/s
+                    sw: 12 + Math.random() * 26,                      // 水平摆幅
+                    ph: Math.random() * 6.283,
+                    rot: (Math.random() - 0.5) * 0.5,
+                    vr: (Math.random() - 0.5) * 0.5,
+                    a: 0.22 + depth * 0.42,
+                    sp: heartSprites[Math.floor(Math.random() * heartSprites.length)]
+                };
+            }
+            for (let i = 0; i < HEART_N; i++) hearts.push(makeHeart(true));
+
+            let hLast = 0;
+            function heartsLoop(t) {
+                const dt = Math.min((t - hLast) / 1000, 0.05);
+                hLast = t;
+                hCtx.clearRect(0, 0, hw, hh);
+                if (isLoaded && !lbOpen && hearts.length) {
+                    for (const h of hearts) {
+                        h.y -= h.vy * dt;
+                        h.rot += h.vr * dt;
+                        if (h.y < -40) { Object.assign(h, makeHeart(false)); }
+                        const x = h.x + Math.sin(t / 900 + h.ph) * h.sw;
+                        // 起漂淡入、到顶淡出
+                        const edge = Math.max(0, Math.min((hh + 30 - h.y) / 90, (h.y + 30) / 110, 1));
+                        hCtx.save();
+                        hCtx.globalAlpha = h.a * edge;
+                        hCtx.translate(x, h.y);
+                        hCtx.rotate(h.rot + Math.sin(t / 700 + h.ph) * 0.15);
+                        hCtx.drawImage(h.sp, -h.r, -h.r, h.r * 2, h.r * 2);
+                        hCtx.restore();
+                    }
+                }
+                requestAnimationFrame(heartsLoop);
+            }
+
+            buildColumns();       // 按屏宽建列
+            createParticles();    // 创建粒子
+            initializeGallery(true);  // 开始加载图片
+            drawParticles();      // 先绘制空白爱心
 
             requestAnimationFrame(autoScroll);
+            requestAnimationFrame(lbFxLoop);
+            requestAnimationFrame(heartsLoop);
 
         });
 
